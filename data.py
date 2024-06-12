@@ -57,3 +57,47 @@ class FashionIQDataset(Dataset):
             return len(self.names)
         if self.mode == 'query':
             return len(self.metadata)
+        
+
+class CIRRDataset(Dataset):
+    def __init__(self, mode, preprocess, split: str='val', path: str='.'):
+        super().__init__()
+        assert split in ['train', 'test1', 'val']
+        assert mode in ['query', 'target']
+        self.path = path
+        self.split = split
+        self.mode = mode
+        self.preprocess = preprocess
+        self.triplets = json.load(open(os.path.join(path, f'cirr/captions/cap.rc2.{self.split}.json')))
+        self.namepath = json.load(open(os.path.join(path, f'cirr/image_splits/split.rc2.{split}.json')))
+    
+
+    def __getitem__(self, index):
+        # index should not be batched
+        if self.mode == 'target':
+            image_name = list(self.namepath.keys())[index]
+            image_rel_path = self.namepath[image_name]
+            image_full_path = os.path.join(self.path, image_rel_path)
+            image = self.preprocess(Image.open(image_full_path))
+            return image_name, image
+
+        if self.mode == 'query':
+            ref_name = self.triplets[index]['reference']
+            ref_path = os.path.join(self.path, self.namepath[ref_name])
+            ref_img = self.preprocess(Image.open(ref_path))
+            target_name = self.triplets[index]['target_hard']
+            caption = self.triplets[index]['caption']
+             
+            if self.split == 'train':
+                target_path = os.path.join(self.path, self.namepath[target_name])
+                target_image = self.preprocess(Image.open(target_path))
+                return ref_name, ref_img, caption, target_image
+            else:
+                return ref_name, ref_img, caption, target_name
+            
+    
+    def __len__(self):
+        if self.mode == 'target':
+            return len(self.namepath)
+        if self.mode == 'query':
+            return len(self.triplets)
