@@ -37,7 +37,7 @@ def parse_args():
         help="Name of the vision backbone to use.",
     )
     parser.add_argument(
-        "--source-data",
+        "--dataset", "--ds",
         type=str,
         default=None,
         help="Path to txt file of retrieval data",

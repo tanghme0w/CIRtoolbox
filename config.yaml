@@ -1,0 +1,9 @@
+enable_wandb: False
+dataset: cirr
+batch_size: 64
+lr: 5.0e-4
+beta1: 0.9
+beta2: 0.999
+eps: 1.0e-7
+epochs: 32
+patience: 1

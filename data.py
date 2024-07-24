@@ -1,8 +1,11 @@
-from torch.utils.data import Dataset
-import torch
+from torch.utils.data import Dataset, DataLoader, default_collate
 import os
 import json
 from PIL import Image
+from preprocess import targetpad_transform
+import numpy as np
+from typing import List
+import random
 
 
 # FashionIQ Dataset
@@ -68,8 +71,8 @@ class CIRRDataset(Dataset):
         self.split = split
         self.mode = mode
         self.preprocess = preprocess
-        self.triplets = json.load(open(os.path.join(path, f'cirr/captions/cap.rc2.{self.split}.json')))
-        self.namepath = json.load(open(os.path.join(path, f'cirr/image_splits/split.rc2.{split}.json')))
+        self.triplets = json.load(open(os.path.join(path, f'captions/cap.rc2.{self.split}.json')))
+        self.namepath = json.load(open(os.path.join(path, f'image_splits/split.rc2.{split}.json')))
     
 
     def __getitem__(self, index):
@@ -101,3 +104,125 @@ class CIRRDataset(Dataset):
             return len(self.namepath)
         if self.mode == 'query':
             return len(self.triplets)
+
+
+# reference: CLIP4CIR (CVPRW 2022)
+def combine_captions(flattened_captions: List[str]):
+    """
+    Function which randomize the FashionIQ training captions in four way: (a) cap1 and cap2 (b) cap2 and cap1 (c) cap1
+    (d) cap2
+    :param caption_pair: the list of caption to randomize, note that the length of such list is 2*batch_size since
+     to each triplet are associated two captions
+    :return: the randomized caption list (with length = batch_size)
+    """
+    captions = []
+    for i in range(0, len(flattened_captions), 2):
+        random_num = random.random()
+        if random_num < 0.25:
+            captions.append(
+                f"{flattened_captions[i].strip('.?, ').capitalize()} and {flattened_captions[i + 1].strip('.?, ')}")
+        elif 0.25 < random_num < 0.5:
+            captions.append(
+                f"{flattened_captions[i + 1].strip('.?, ').capitalize()} and {flattened_captions[i].strip('.?, ')}")
+        elif 0.5 < random_num < 0.75:
+            captions.append(f"{flattened_captions[i].strip('.?, ').capitalize()}")
+        else:
+            captions.append(f"{flattened_captions[i + 1].strip('.?, ').capitalize()}")
+    return captions
+
+
+def fiq_collate_fn_train(batch):
+    ref_name, ref_img, captions, target_name = default_collate(batch)
+    # process captions
+    flattened_captions = np.array(captions).T.flatten().tolist()
+    combined_captions = combine_captions(flattened_captions)
+    return ref_name, ref_img, combined_captions, target_name
+
+
+def fiq_collate_fn_val(batch):
+    candidate_name, candidate_image, captions, target_name = default_collate(batch)
+    # process captions
+    flattened_captions = np.array(captions).T.flatten().tolist()
+    combined_captions = [
+        f"{flattened_captions[i].strip('.?, ').capitalize()} and {flattened_captions[i + 1].strip('.?, ')}" for
+        i in range(0, len(flattened_captions), 2)]
+    return candidate_name, candidate_image, combined_captions, target_name
+
+
+def build_data(name: str, bs):
+    try:
+        assert name in ['fiq-dress', 'fiq-shirt', 'fiq-toptee', 'cirr']
+    except AssertionError:
+        print(f"Unknown dataset name {name}. Dataset name must be one of 'fiq-dress', 'fiq-shirt', 'fiq-toptee', 'cirr'.")
+
+    if name.startswith('fiq'):
+        source_data = name.split('-')[-1]
+        datasets = [
+            FashionIQDataset(
+                mode='query', 
+                clothtype=source_data, 
+                split='train', 
+                path='./fashion-iq',
+                preprocess=targetpad_transform()
+            ),
+            FashionIQDataset(
+                mode='query', 
+                clothtype=source_data, 
+                split='val', 
+                path='./fashion-iq',
+                preprocess=targetpad_transform()
+            ),
+            FashionIQDataset(
+                mode='target', 
+                clothtype=source_data,
+                path='./fashion-iq',
+                preprocess=targetpad_transform()
+            )
+        ]
+
+    elif name == 'cirr':
+        datasets = [
+            CIRRDataset(
+                mode='query', 
+                split='train', 
+                path='./cirr',
+                preprocess=targetpad_transform()
+            ),
+            CIRRDataset(
+                mode='query', 
+                split='val', 
+                path='./cirr',
+                preprocess=targetpad_transform()
+            ),
+            CIRRDataset(
+                mode='target', 
+                path='./cirr',
+                preprocess=targetpad_transform()
+            )
+        ]
+    
+    train_ds, val_ds, tgt_ds = datasets
+    return [
+        DataLoader(
+            dataset=train_ds,
+            batch_size=bs,
+            num_workers=16,
+            pin_memory=False,
+            drop_last=True,
+            shuffle=True,
+            collate_fn = fiq_collate_fn_train if name.startswith('fiq') else default_collate
+        ),
+        DataLoader(
+            dataset=val_ds,
+            batch_size=bs,
+            num_workers=16,
+            pin_memory=False,
+            drop_last=True,
+            shuffle=False,
+            collate_fn = fiq_collate_fn_val if name.startswith('fiq') else default_collate
+        ),
+        DataLoader(
+            dataset=tgt_ds,
+            batch_size=128
+        )
+    ]
