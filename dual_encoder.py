@@ -12,7 +12,6 @@ import traceback
 
 from data import build_data
 from params import parse_args
-from fiq_caption_utils import combine_captions
 from model import *
 import yaml
 
