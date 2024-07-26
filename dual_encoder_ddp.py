@@ -14,7 +14,7 @@ from datetime import datetime
 import os
 import traceback
 
-from data import build_data
+from data_ddp import build_data
 from params import parse_args
 from model import *
 import yaml

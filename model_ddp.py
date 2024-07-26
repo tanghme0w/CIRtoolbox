@@ -36,3 +36,4 @@ class CLIPSumModel(DualEncoderModel):
         img = img.to(self.di.device)
         target_features = self.model.get_image_features(img)
         return nn.functional.normalize(target_features)
+
