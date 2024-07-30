@@ -1,5 +1,5 @@
 enable_wandb: False
-dataset: cirr
+dataset: fiq-dress
 batch_size: 64
 lr: 5.0e-4
 beta1: 0.9

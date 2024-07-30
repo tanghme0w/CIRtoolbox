@@ -42,7 +42,7 @@ def main():
         )
 
     # model
-    model = CLIPSumModel("clip-vit-large-patch14").to(device)
+    model = LastHiddenXAttnT2I().to(device)
 
     # dataset & dataloader
     ds_name = config['dataset']
@@ -106,7 +106,7 @@ def main():
 
             # validate epoch
             model.eval()
-            metrics = [1, 5, 10, 50, 100]
+            metrics = [10, 50]
             recall = dict()
             with torch.no_grad():
                 # get all target feature from validation set
@@ -136,6 +136,7 @@ def main():
                     count += len(ref_img)
                 for i in metrics:
                     recall[i] /= count
+                    recall[i] *= 100
                 print([f"R@{i}: {recall[i]}" for i in metrics])
 
             eval_mean = sum([recall[i] for i in metrics]) / len(metrics)
