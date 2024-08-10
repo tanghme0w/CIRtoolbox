@@ -52,7 +52,7 @@ def parse_args():
         "--workers", type=int, default=0, help="Number of workers per GPU."
     )
     parser.add_argument(
-        "--batch-size", "--bs", type=int, default=64, help="Batch size per GPU."
+        "--batch-size", "--bs", type=int, help="Batch size per GPU."
     )
     parser.add_argument(
         "--epochs", type=int, default=32, help="Number of epochs to train for."
@@ -64,7 +64,7 @@ def parse_args():
         "--warmup", type=int, default=0, help="Number of steps to warmup for."
     )
     parser.add_argument(
-        "--patience", type=int, default=1
+        "--patience", type=int,
     )
     parser.add_argument("--lr", type=float, default=2e-6, help="Learning rate.")
     parser.add_argument("--beta1", type=float, default=None, help="Adam beta 1.")

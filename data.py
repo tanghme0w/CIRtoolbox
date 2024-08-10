@@ -149,7 +149,7 @@ def fiq_collate_fn_val(batch):
     return candidate_name, candidate_image, combined_captions, target_name
 
 
-def build_data(name: str, bs):
+def build_data(name: str, bs, preprocess=targetpad_transform()):
     try:
         assert name in ['fiq-dress', 'fiq-shirt', 'fiq-toptee', 'cirr']
     except AssertionError:
@@ -163,20 +163,20 @@ def build_data(name: str, bs):
                 clothtype=source_data, 
                 split='train', 
                 path='./fashion-iq',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             ),
             FashionIQDataset(
                 mode='query', 
                 clothtype=source_data, 
                 split='val', 
                 path='./fashion-iq',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             ),
             FashionIQDataset(
                 mode='target', 
                 clothtype=source_data,
                 path='./fashion-iq',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             )
         ]
 
@@ -186,18 +186,18 @@ def build_data(name: str, bs):
                 mode='query', 
                 split='train', 
                 path='./cirr',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             ),
             CIRRDataset(
                 mode='query', 
                 split='val', 
                 path='./cirr',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             ),
             CIRRDataset(
                 mode='target', 
                 path='./cirr',
-                preprocess=targetpad_transform()
+                preprocess=preprocess
             )
         ]
     

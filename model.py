@@ -6,6 +6,7 @@ from typing import Optional, List
 from PIL.Image import Image
 import numpy as np
 from types import MethodType
+from preprocess import targetpad_transform
 
 
 class DualEncoderModel(nn.Module):
@@ -26,7 +27,8 @@ class CLIPSumModel(DualEncoderModel):
         super().__init__()
         self.model = CLIPModel.from_pretrained(path, local_files_only=True)
         self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
-        
+        self.preprocess = targetpad_transform()
+
     def query_forward(self, img, text):
         input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
         img = img.to(self.di.device)

@@ -13,6 +13,7 @@ import traceback
 from data import build_data
 from params import parse_args
 from model import *
+from eva_model import CLIPSumModelEVA
 import yaml
 
 import wandb
@@ -42,17 +43,17 @@ def main():
         )
 
     # model
-    model = LastHiddenXAttnT2I().to(device)
+    model = CLIPSumModelEVA().to(device)
 
     # dataset & dataloader
     ds_name = config['dataset']
-    train_loader, val_loader, target_loader = build_data(ds_name, config['batch_size'])
+    train_loader, val_loader, target_loader = build_data(ds_name, config['batch_size'], model.preprocess)
 
     # optimizer, scaler, and scheduler
     optimizer = AdamW(
         [{'params': model.parameters(), 'lr': config['lr'],
           'betas': (config['beta1'], config['beta2']), 'eps': config['eps']}])
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
     
     # loss function
     loss_func = nn.CrossEntropyLoss()
@@ -78,7 +79,7 @@ def main():
 
                 optimizer.zero_grad()
 
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     # forward
                     query_emb = model.query_forward(ref_img, captions)
                     tgt_emb = model.target_forward(target_img)
