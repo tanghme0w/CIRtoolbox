@@ -2,38 +2,30 @@ import torch
 import torch.nn as nn
 from transformers import CLIPModel, CLIPTokenizer
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
-from typing import Optional, List
-from PIL.Image import Image
-import numpy as np
+from typing import Optional
 from types import MethodType
-from preprocess import targetpad_transform
+from data.preprocess import targetpad_transform
+from .base import DualEncoderModel
 
 
-class DualEncoderModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.di = nn.Parameter(torch.empty(0))  # device indicator
-
-    def query_forward(self, img, text):
-        raise NotImplementedError("query forward not implemented")
-
-    def target_forward(self, img):
-        raise NotImplementedError("target forward not implemented")
-
-
-class CLIPSumModel(DualEncoderModel):
+class LastHiddenXAttnT2I(DualEncoderModel):
     def __init__(self, path="clip-vit-large-patch14"):
         # load CLIP model & CLIP tokenizer
         super().__init__()
         self.model = CLIPModel.from_pretrained(path, local_files_only=True)
+        self.model.get_text_outputs = MethodType(get_text_outputs, self.model)
+        self.model.get_image_features_XAttnT2I = MethodType(get_image_features_XAttnT2I, self.model)
+        self.model.vision_model.CLIP_vit_forward_XAttnT2I = MethodType(CLIP_vit_forward_XAttnT2I, self.model.vision_model)
+        self.model.vision_model.encoder.CLIP_encoder_forward_XAttnT2I = MethodType(CLIP_encoder_forward_XAttnT2I_LastHidden, self.model.vision_model.encoder)
+        self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
+        self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
         self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
-        self.preprocess = targetpad_transform()
 
     def query_forward(self, img, text):
         input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
         img = img.to(self.di.device)
-        text_features = self.model.get_text_features(input_ids)
-        img_features = self.model.get_image_features(img)
+        text_features, text_last_hidden = self.model.get_text_outputs(input_ids)
+        img_features = self.model.get_image_features_XAttnT2I(text_last_hidden, img)
         return nn.functional.normalize(text_features + img_features)
 
     def target_forward(self, img):
@@ -42,6 +34,67 @@ class CLIPSumModel(DualEncoderModel):
         return nn.functional.normalize(target_features)
 
 
+class FirstHiddenXAttnT2I(DualEncoderModel):
+    def __init__(self, path="clip-vit-large-patch14"):
+        # load CLIP model & CLIP tokenizer
+        super().__init__()
+        self.model = CLIPModel.from_pretrained(path, local_files_only=True)
+        self.model.get_text_outputs = MethodType(get_text_outputs, self.model)
+        self.model.get_image_features_XAttnT2I = MethodType(get_image_features_XAttnT2I, self.model)
+        self.model.vision_model.CLIP_vit_forward_XAttnT2I = MethodType(CLIP_vit_forward_XAttnT2I, self.model.vision_model)
+        self.model.vision_model.encoder.CLIP_encoder_forward_XAttnT2I = MethodType(CLIP_encoder_forward_XAttnT2I_FirstHidden, self.model.vision_model.encoder)
+        self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
+        self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
+        self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
+
+    def query_forward(self, img, text):
+        input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
+        img = img.to(self.di.device)
+        text_features, text_last_hidden = self.model.get_text_outputs(input_ids)
+        img_features = self.model.get_image_features_XAttnT2I(text_last_hidden, img)
+        return nn.functional.normalize(text_features + img_features)
+
+    def target_forward(self, img):
+        img = img.to(self.di.device)
+        target_features = self.model.get_image_features(img)
+        return nn.functional.normalize(target_features)
+
+
+class MaskedFirstHiddenXAttnT2I(DualEncoderModel):
+    def __init__(self, path="clip-vit-large-patch14"):
+        # load CLIP model & CLIP tokenizer
+        super().__init__()
+        self.model = CLIPModel.from_pretrained(path, local_files_only=True)
+        self.model.get_text_outputs = MethodType(get_text_outputs, self.model)
+        self.model.get_image_features_XAttnT2I = MethodType(get_image_features_XAttnT2I, self.model)
+        self.model.vision_model.CLIP_vit_forward_XAttnT2I = MethodType(CLIP_vit_forward_XAttnT2I, self.model.vision_model)
+        self.model.vision_model.encoder.CLIP_encoder_forward_XAttnT2I = MethodType(CLIP_encoder_forward_XAttnT2I_FirstHidden, self.model.vision_model.encoder)
+        self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
+        self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
+        self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
+
+    def query_forward(self, img, text):
+        input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
+        eos_token_id = self.model.config.text_config.eos_token_id
+        eos_positions = (input_ids == eos_token_id).int().argmax(dim=-1).to(self.di.device)
+        img = img.to(self.di.device)
+        text_features, text_last_hidden = self.model.get_text_outputs(input_ids)
+        
+        img_features = []
+        for idx, p in enumerate(eos_positions):
+            text_last_hidden_capped = text_last_hidden[idx, :p, :].unsqueeze(0)
+            image = img[idx].unsqueeze(0)
+            img_features.append(self.model.get_image_features_XAttnT2I(text_last_hidden_capped, image))
+        img_features = torch.cat(img_features, dim=0)
+        return nn.functional.normalize(text_features + img_features)
+
+    def target_forward(self, img):
+        img = img.to(self.di.device)
+        target_features = self.model.get_image_features(img)
+        return nn.functional.normalize(target_features)
+
+
+""" Deprecated """
 class CrossAttention(nn.Module):
     def __init__(self, src_dim, tgt_dim):
         # src_dim=1024, tgt_dim=768
@@ -308,60 +361,6 @@ def CLIP_encoder_forward_XAttnT2I_FirstHidden(
     )
 
 
-class LastHiddenXAttnT2I(DualEncoderModel):
-    def __init__(self, path="clip-vit-large-patch14"):
-        # load CLIP model & CLIP tokenizer
-        super().__init__()
-        self.model = CLIPModel.from_pretrained(path, local_files_only=True)
-        self.model.get_text_outputs = MethodType(get_text_outputs, self.model)
-        self.model.get_image_features_XAttnT2I = MethodType(get_image_features_XAttnT2I, self.model)
-        self.model.vision_model.CLIP_vit_forward_XAttnT2I = MethodType(CLIP_vit_forward_XAttnT2I, self.model.vision_model)
-        self.model.vision_model.encoder.CLIP_encoder_forward_XAttnT2I = MethodType(CLIP_encoder_forward_XAttnT2I_LastHidden, self.model.vision_model.encoder)
-        self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
-        self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
-        self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
-
-    def query_forward(self, img, text):
-        input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
-        img = img.to(self.di.device)
-        text_features, text_last_hidden = self.model.get_text_outputs(input_ids)
-        img_features = self.model.get_image_features_XAttnT2I(text_last_hidden, img)
-        return nn.functional.normalize(text_features + img_features)
-
-    def target_forward(self, img):
-        img = img.to(self.di.device)
-        target_features = self.model.get_image_features(img)
-        return nn.functional.normalize(target_features)
-
-
-class FirstHiddenXAttnT2I(DualEncoderModel):
-    def __init__(self, path="clip-vit-large-patch14"):
-        # load CLIP model & CLIP tokenizer
-        super().__init__()
-        self.model = CLIPModel.from_pretrained(path, local_files_only=True)
-        self.model.get_text_outputs = MethodType(get_text_outputs, self.model)
-        self.model.get_image_features_XAttnT2I = MethodType(get_image_features_XAttnT2I, self.model)
-        self.model.vision_model.CLIP_vit_forward_XAttnT2I = MethodType(CLIP_vit_forward_XAttnT2I, self.model.vision_model)
-        self.model.vision_model.encoder.CLIP_encoder_forward_XAttnT2I = MethodType(CLIP_encoder_forward_XAttnT2I_FirstHidden, self.model.vision_model.encoder)
-        self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
-        self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
-        self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
-
-    def query_forward(self, img, text):
-        input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)
-        eos_positions = (input_ids == self.eos_token_id).int().argmax(dim=-1).to(self.di.device)
-        img = img.to(self.di.device)
-        text_features, text_last_hidden = self.model.get_text_outputs(input_ids)
-        text_last_hidden_capped = text_last_hidden[:eos_positions]
-        img_features = self.model.get_image_features_XAttnT2I(text_last_hidden_capped, img)
-        return nn.functional.normalize(text_features + img_features)
-
-    def target_forward(self, img):
-        img = img.to(self.di.device)
-        target_features = self.model.get_image_features(img)
-        return nn.functional.normalize(target_features)
-
-
 if __name__ == '__main__':
     pixel_values = torch.randn(1, 3, 224, 224).to("cuda")
     text = "Hello There"
@@ -376,4 +375,3 @@ if __name__ == '__main__':
     last_text_hidden = model.get_text_outputs(input_ids)[1]
 
     print(last_image_hidden.shape, last_text_hidden.shape)
-

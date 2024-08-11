@@ -1,10 +1,6 @@
 import torch
 from torch.optim import AdamW
-from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler
 import torch.nn as nn
-import numpy as np
-from transformers import CLIPModel, CLIPTokenizer
 from tqdm import tqdm
 from datetime import datetime
 import os
@@ -13,11 +9,12 @@ import traceback
 from data import build_data
 from params import parse_args
 from model import *
-from eva_model import CLIPSumModelEVA
 import yaml
 
 import wandb
+import logging
 
+logger = logging.Logger("main")
 
 def main():
     # read config
@@ -29,7 +26,11 @@ def main():
             config[key] = value
 
     # set device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not torch.cuda.is_available():
+        logger.log("cuda device not available, device settings will be neglected.")
+        device = "cpu"
+    else:
+        device = config['device']
 
     # setup wandb logging
     if config['enable_wandb']:
@@ -47,7 +48,10 @@ def main():
 
     # dataset & dataloader
     ds_name = config['dataset']
-    train_loader, val_loader, target_loader = build_data(ds_name, config['batch_size'], model.preprocess)
+    try:
+        train_loader, val_loader, target_loader = build_data(ds_name, config['batch_size'], model.preprocess)
+    except AttributeError:
+        train_loader, val_loader, target_loader = build_data(ds_name, config['batch_size'])
 
     # optimizer, scaler, and scheduler
     optimizer = AdamW(

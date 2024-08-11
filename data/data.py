@@ -2,7 +2,7 @@ from torch.utils.data import Dataset, DataLoader, default_collate
 import os
 import json
 from PIL import Image
-from preprocess import targetpad_transform
+from .preprocess import targetpad_transform
 import numpy as np
 from typing import List
 import random

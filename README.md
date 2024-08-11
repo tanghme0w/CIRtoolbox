@@ -1,2 +1,2 @@
 # CIRtoolbox
-contains everything about composed image retrieval
+A framework for composed image retrieval.
