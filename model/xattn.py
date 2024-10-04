@@ -4,7 +4,7 @@ from transformers import CLIPModel, CLIPTokenizer
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from typing import Optional
 from types import MethodType
-from data.preprocess import targetpad_transform
+from .preprocess import targetpad_transform
 from .base import DualEncoderModel
 
 
@@ -20,6 +20,7 @@ class LastHiddenXAttnT2I(DualEncoderModel):
         self.model.vision_model.encoder.xattn_layer = nn.MultiheadAttention(embed_dim=1024, num_heads=1, kdim=768, vdim=768, batch_first=True)
         self.model.vision_model.encoder.layer_norm = nn.LayerNorm(normalized_shape=(257, 1024))
         self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
+        self.preprocess = targetpad_transform()
 
     def query_forward(self, img, text):
         input_ids = self.tokenizer(text, padding='max_length', return_tensors='pt').input_ids.to(self.di.device)

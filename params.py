@@ -1,30 +1,37 @@
 import argparse
 
 
-def get_default_params(model_name):
-    # Params from paper (https://arxiv.org/pdf/2103.00020.pdf)
-    if model_name in ["RN50", "RN101", "RN50x4", "RN50x64", "RN50x16", "RN50_flat", "RN50_t1", "RN50_t2", "RN50_t3",
-                      "RN50_t4", "RN50_t5", "RN50_t6",
-                      "RN50_flat_ft", "RN50_t1_pos_ft", "RN50_t2_pos_ft", "RN50_t1_pos", "RN50_t2_pos",
-                      "RN50_flat_large", "RN50_t1_large", "RN50_t2_large",
-                      "RN50_a2", "RN50_a2s", "ViT-H-14"]:
-        return {"lr": 5.0e-4, "beta1": 0.9, "beta2": 0.999, "eps": 1.0e-8}
-    elif model_name in ["ViT-B/32", "ViT-L/14", "ViT-B/16"]:
-        return {"lr": 5.0e-4, "beta1": 0.9, "beta2": 0.98, "eps": 1.0e-6}
-    else:
-        return {}
+# def get_default_params(model_name):
+#     # Params from paper (https://arxiv.org/pdf/2103.00020.pdf)
+#     if model_name in ["RN50", "RN101", "RN50x4", "RN50x64", "RN50x16", "RN50_flat", "RN50_t1", "RN50_t2", "RN50_t3",
+#                       "RN50_t4", "RN50_t5", "RN50_t6",
+#                       "RN50_flat_ft", "RN50_t1_pos_ft", "RN50_t2_pos_ft", "RN50_t1_pos", "RN50_t2_pos",
+#                       "RN50_flat_large", "RN50_t1_large", "RN50_t2_large",
+#                       "RN50_a2", "RN50_a2s", "ViT-H-14"]:
+#         return {"lr": 5.0e-4, "beta1": 0.9, "beta2": 0.999, "eps": 1.0e-8}
+#     elif model_name in ["ViT-B/32", "ViT-L/14", "ViT-B/16"]:
+#         return {"lr": 5.0e-4, "beta1": 0.9, "beta2": 0.98, "eps": 1.0e-6}
+#     else:
+#         return {}
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--gpu",
+        help="device number",
         type=int,
         default=0
     )
     parser.add_argument(
         "--ckpt",
         help='path to checkpoint file'
+    )
+    parser.add_argument(
+        "--ema",
+        help="EMA rate. EMA is disabled if this value is set to None.",
+        type=bool,
+        default=None
     )
     parser.add_argument(
         "--model",
@@ -66,16 +73,16 @@ def parse_args():
     parser.add_argument(
         "--patience", type=int,
     )
-    parser.add_argument("--lr", type=float, default=2e-6, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
     parser.add_argument("--beta1", type=float, default=None, help="Adam beta 1.")
     parser.add_argument("--beta2", type=float, default=None, help="Adam beta 2.")
     parser.add_argument("--eps", type=float, default=None, help="Adam epsilon.")
     parser.add_argument("--wd", type=float, default=0.2, help="Weight decay.")
 
     args = parser.parse_args()
-    default_params = get_default_params(args.model)
-    for name, val in default_params.items():
-        if getattr(args, name) is None:
-            setattr(args, name, val)
+    # default_params = get_default_params(args.model)
+    # for name, val in default_params.items():
+    #     if getattr(args, name) is None:
+    #         setattr(args, name, val)
 
     return args

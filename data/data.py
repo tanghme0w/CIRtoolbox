@@ -2,7 +2,6 @@ from torch.utils.data import Dataset, DataLoader, default_collate
 import os
 import json
 from PIL import Image
-from .preprocess import targetpad_transform
 import numpy as np
 from typing import List
 import random
@@ -149,7 +148,7 @@ def fiq_collate_fn_val(batch):
     return candidate_name, candidate_image, combined_captions, target_name
 
 
-def build_data(name: str, bs, preprocess=targetpad_transform()):
+def build_data(name: str, bs, preprocess):
     try:
         assert name in ['fiq-dress', 'fiq-shirt', 'fiq-toptee', 'cirr']
     except AssertionError:

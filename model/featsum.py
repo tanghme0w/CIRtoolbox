@@ -1,7 +1,7 @@
 import torch.nn as nn
 from .base import DualEncoderModel
 from transformers import CLIPModel, CLIPTokenizer
-from data.preprocess import targetpad_transform
+from .preprocess import targetpad_transform
 from eva_clip import create_model_and_transforms, get_tokenizer
 
 
