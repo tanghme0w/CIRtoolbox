@@ -1,11 +1,12 @@
 from torch.utils.data import Dataset, DataLoader, default_collate
+import torch
 import os
 import json
 from PIL import Image
 import numpy as np
 from typing import List
 import random
-
+from .augmentation import data_augmentation
 
 # FashionIQ Dataset
 class FashionIQDataset(Dataset):
@@ -36,21 +37,68 @@ class FashionIQDataset(Dataset):
         if self.mode == 'target':
             image_name = self.names[index]
             image_file = os.path.join(self.image_path, f'{image_name}.png')
-            image = self.preprocess(Image.open(image_file))
+            image=Image.open(image_file)
+            if self.split == 'train':
+                image = data_augmentation(
+                    image=image,
+                    p=0.2,
+                    mask_size=50,
+                    mask_color=(0, 0, 0),
+                    hgain=0.1,
+                    sgain=0.3,
+                    vgain=0.5,
+                    angle=45,
+                    expand=True,
+                    scale_range=(0.5, 1.5),
+                    mean=0,
+                    std=25,
+                )
+            image = self.preprocess(image)
             return image_name, image
-        
+
         elif self.mode == 'query':
             candidate_name = self.metadata[index]['candidate']
             target_name = self.metadata[index]['target']
             captions = self.metadata[index]['captions']
             candidate_image_file = os.path.join(self.image_path, f'{candidate_name}.png')
-            candidate_image = self.preprocess(Image.open(candidate_image_file))
-            
+
             if self.split == 'train':
+                candidate_image = data_augmentation(
+                    image=Image.open(candidate_image_file),
+                    p=0.2,
+                    mask_size=50,
+                    mask_color=(0, 0, 0),
+                    hgain=0.1,
+                    sgain=0.3,
+                    vgain=0.5,
+                    angle=45,
+                    expand=True,
+                    scale_range=(0.5, 1.5),
+                    mean=0,
+                    std=25,
+                )
+                candidate_image = self.preprocess(candidate_image)
+
                 target_image_file = os.path.join(self.image_path, f'{target_name}.png')
-                target_image = self.preprocess(Image.open(target_image_file))
+                target_image = data_augmentation(
+                    image=Image.open(target_image_file),
+                    p=0.2,
+                    mask_size=50,
+                    mask_color=(0, 0, 0),
+                    hgain=0.1,
+                    sgain=0.3,
+                    vgain=0.5,
+                    angle=45,
+                    expand=True,
+                    scale_range=(0.5, 1.5),
+                    mean=0,
+                    std=25,
+                )
+                target_image = self.preprocess(target_image)
                 return candidate_name, candidate_image, captions, target_image
+
             else:
+                candidate_image = self.preprocess(Image.open(candidate_image_file))
                 return candidate_name, candidate_image, captions, target_name
 
 
@@ -199,7 +247,7 @@ def build_data(name: str, bs, preprocess):
                 preprocess=preprocess
             )
         ]
-    
+
     train_ds, val_ds, tgt_ds = datasets
     return [
         DataLoader(

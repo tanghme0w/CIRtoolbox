@@ -17,7 +17,14 @@ import copy
 
 logger = logging.Logger("main")
 
+def fix_seed(seed):
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+
 def main():
+    # fix seed 
+    fix_seed(42)
+    
     # read config
     config = yaml.safe_load(open('config.yaml'))
     # cli args can override config
