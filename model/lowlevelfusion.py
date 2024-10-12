@@ -13,6 +13,7 @@ class LowLevelFusion(DualEncoderModel):
         # load CLIP model & CLIP tokenizer
         super().__init__()
         self.model = CLIPModel.from_pretrained(path, local_files_only=True)
+        self.model.gradient_checkpointing_enable()
         self.model.vision_model.encoder.forward = MethodType(encoder_forward_llf, self.model.vision_model.encoder)
         self.tokenizer = CLIPTokenizer.from_pretrained(path, local_files_only=True)
         self.preprocess = targetpad_transform()
@@ -23,7 +24,7 @@ class LowLevelFusion(DualEncoderModel):
         text_features = self.model.get_text_features(input_ids)
         img_features = self.model.get_image_features(img)
         return nn.functional.normalize(text_features + img_features)
-
+    
     def target_forward(self, img):
         img = img.to(self.di.device)
         target_features = self.model.get_image_features(img)

@@ -20,6 +20,7 @@ logger = logging.Logger("main")
 def fix_seed(seed):
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
+    os.environ['CUBLAS_WORKSPACE_CONFIG']=':4096:8'
 
 def main():
     # fix seed 
@@ -34,11 +35,6 @@ def main():
             config[key] = value
 
     # set device
-    # if not torch.cuda.is_available():
-    #     logger.log("cuda device not available, device settings will be neglected.")
-    #     device = "cpu"
-    # else:
-    #     device = config['device']
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # setup wandb logging
@@ -69,7 +65,7 @@ def main():
     optimizer = AdamW(
         [{'params': model.parameters(), 'lr': config['lr'],
           'betas': (config['beta1'], config['beta2']), 'eps': config['eps']}])
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.cuda.amp.GradScaler()
     
     # loss function
     loss_func = nn.CrossEntropyLoss()
@@ -94,8 +90,8 @@ def main():
             for idx, (ref_name, ref_img, captions, target_img) in enumerate(train_bar):
 
                 optimizer.zero_grad()
-
-                with torch.amp.autocast('cuda'):
+                # import torch.amp
+                with torch.cuda.amp.autocast():
                     # forward
                     query_emb = model.query_forward(ref_img, captions)
                     tgt_emb = model.target_forward(target_img)
@@ -127,73 +123,75 @@ def main():
             print(f"epoch {epoch} loss: {epoch_loss}")
 
             """ Validate Epoch """
-            # initialize
-            model.eval()
-            metrics = [10, 50]
-            recall = dict()
+            if epoch == 0 or epoch >= 8:
+                # initialize
+                model.eval()
+                metrics = [10, 50]
+                recall = dict()
 
-            # switch to ema params
-            if config['ema']:
-                model_state_dict = copy.deepcopy(model.state_dict())
-                ema_state_dict = copy.deepcopy(model.state_dict())
-                for i, (name, _value) in enumerate(model.named_parameters()):
-                    assert name in ema_state_dict
-                    ema_state_dict[name] = ema_params[i]
-                print("Switch to ema")
-                model.load_state_dict(ema_state_dict)
+                # switch to ema params
+                if config['ema']:
+                    model_state_dict = copy.deepcopy(model.state_dict())
+                    ema_state_dict = copy.deepcopy(model.state_dict())
+                    for i, (name, _value) in enumerate(model.named_parameters()):
+                        assert name in ema_state_dict
+                        ema_state_dict[name] = ema_params[i]
+                    print("Switch to ema")
+                    model.load_state_dict(ema_state_dict)
 
-            with torch.no_grad():
-                # get all target feature from validation set
-                target_bar = tqdm(target_loader, desc="[Validate] Target Feature")
-                all_target_names = []
-                all_target_features = []
-                for img_name, img in target_bar:
-                    all_target_names += img_name
-                    all_target_features.append(model.target_forward(img))
-                all_target_features = torch.cat(all_target_features)
-                # get all query feature for validation
-                val_bar = tqdm(val_loader, desc="[Validate] Query Feature")
-                for i in metrics:
-                    recall[i] = 0
-                count = 0
-                for ref_name, ref_img, captions, target_name in val_bar:
-                    # infer query features
-                    query_emb = model.query_forward(ref_img, captions)
-                    target_idx = [all_target_names.index(name) for name in target_name]
-                    # compute sorted index matrix
-                    distances = 1 - query_emb @ all_target_features.T
-                    sorted_indices = torch.argsort(distances, dim=-1).cpu()
-                    index_mask = torch.Tensor(target_idx).view(len(target_idx), 1).repeat(1, sorted_indices.shape[-1])
-                    labels = sorted_indices.eq(index_mask).float()
-                    for metric in metrics:
-                        recall[metric] += torch.sum(labels[:, :metric])
-                    count += len(ref_img)
-                for i in metrics:
-                    recall[i] /= count
-                    recall[i] *= 100
-                print([f"R@{i}: {recall[i]}" for i in metrics])
+                with torch.no_grad():
+                    with torch.cuda.amp.autocast():
+                        # get all target feature from validation set
+                        target_bar = tqdm(target_loader, desc="[Validate] Target Feature")
+                        all_target_names = []
+                        all_target_features = []
+                        for img_name, img in target_bar:
+                            all_target_names += img_name
+                            all_target_features.append(model.target_forward(img))
+                        all_target_features = torch.cat(all_target_features)
+                        # get all query feature for validation
+                        val_bar = tqdm(val_loader, desc="[Validate] Query Feature")
+                        for i in metrics:
+                            recall[i] = 0
+                        count = 0
+                        for ref_name, ref_img, captions, target_name in val_bar:
+                            # infer query features
+                            query_emb = model.query_forward(ref_img, captions)
+                            target_idx = [all_target_names.index(name) for name in target_name]
+                            # compute sorted index matrix
+                            distances = 1 - query_emb @ all_target_features.T
+                            sorted_indices = torch.argsort(distances, dim=-1).cpu()
+                            index_mask = torch.Tensor(target_idx).view(len(target_idx), 1).repeat(1, sorted_indices.shape[-1])
+                            labels = sorted_indices.eq(index_mask).float()
+                            for metric in metrics:
+                                recall[metric] += torch.sum(labels[:, :metric])
+                            count += len(ref_img)
+                        for i in metrics:
+                            recall[i] /= count
+                            recall[i] *= 100
+                        print([f"R@{i}: {recall[i]}" for i in metrics])
 
-            eval_mean = sum([recall[i] for i in metrics]) / len(metrics)
-            if eval_mean > best_eval_mean:
-                patience_count = 0
-                best_eval_mean = eval_mean
-                best_epoch = epoch
-                # save checkpoint
-                checkpoint = {
-                    "epoch": epoch,
-                    "model_sd": model.state_dict(),
-                    "optimizer_sd": optimizer.state_dict()
-                }
-                torch.save(checkpoint, os.path.join(save_dir, f"epoch{str(epoch).zfill(3)}.pt"))
-            else:
-                patience_count += 1
-                if patience_count > config['patience']:
-                    break
-    
-            # back to no ema
-            if config['ema']:
-                print("Switch back from ema")
-                model.load_state_dict(model_state_dict)
+                    eval_mean = sum([recall[i] for i in metrics]) / len(metrics)
+                    if eval_mean > best_eval_mean:
+                        patience_count = 0
+                        best_eval_mean = eval_mean
+                        best_epoch = epoch
+                        # save checkpoint
+                        checkpoint = {
+                            "epoch": epoch,
+                            "model_sd": model.state_dict(),
+                            "optimizer_sd": optimizer.state_dict()
+                        }
+                        torch.save(checkpoint, os.path.join(save_dir, f"epoch{str(epoch).zfill(3)}.pt"))
+                    else:
+                        patience_count += 1
+                        if patience_count > config['patience']:
+                            break
+            
+                    # back to no ema
+                    if config['ema']:
+                        print("Switch back from ema")
+                        model.load_state_dict(model_state_dict)
 
     except Exception as e:
         print(traceback.format_exc())

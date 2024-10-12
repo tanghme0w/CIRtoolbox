@@ -164,7 +164,13 @@ def data_augmentation(image, p, **kwargs):
     Returns:
         PIL.Image: The image after modification.
     """
-    methods = [cutout, modify_hsv, rotate_image, random_scaling, add_gaussian_noise]
+    methods = [
+        cutout, 
+        modify_hsv, 
+        rotate_image, 
+        random_scaling, 
+        add_gaussian_noise
+        ]
     for method in methods:
         if random.random() < p:
             image = method(image, **kwargs)

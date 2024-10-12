@@ -1,11 +1,11 @@
 enable_wandb: False
 dataset: fiq-dress
-batch_size: 32
+batch_size: 512
 lr: 2.0e-6
 beta1: 0.9
 beta2: 0.999
 eps: 1.0e-7
 epochs: 2
-patience: 1
+patience: 3
 ema: 0.99
 mpi: False
